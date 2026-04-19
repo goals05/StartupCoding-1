@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth." },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "favorites": { "type": "array", "items": { "type": "string" }, "description": "List of place IDs marked as favorite." },
+        "lastRegion": { "type": "string", "description": "The last region the user was exploring." },
+        "lastProvince": { "type": "string", "description": "The last province selected." },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "TravelRecord": {
+      "title": "TravelRecord",
+      "description": "A record of a user's visit to a place.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "placeId": { "type": "string" },
+        "placeName": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "content": { "type": "string" },
+        "visitedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "placeId", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user profiles containing personal settings and favorites."
+    },
+    "/travel_records/{recordId}": {
+      "schema": "TravelRecord",
+      "description": "User generated travel journals and reviews."
+    }
+  }
+}
