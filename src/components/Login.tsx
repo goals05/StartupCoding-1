@@ -3,7 +3,7 @@ import { Zap, Mail, Lock, ArrowRight, Github, Chrome } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, GithubAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
 
 interface LoginProps {
   onLogin: (email: string) => void;
@@ -23,7 +23,21 @@ export default function Login({ onLogin }: LoginProps) {
       await signInWithPopup(auth, provider);
     } catch (err: any) {
       console.error(err);
-      setError('구글 로그인에 실패했습니다.');
+      setError('구글 로그인에 실패했습니다. 팝업이 차단되었는지 확인해주세요.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGithubLogin = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const provider = new GithubAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.error(err);
+      setError('깃허브 로그인에 실패했습니다. Firebase 콘솔에서 깃허브 로그인이 활성화되어 있는지 확인해주세요.');
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +58,7 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 text-gray-900">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -63,6 +77,17 @@ export default function Login({ onLogin }: LoginProps) {
 
         {/* Login Form */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100">
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl font-medium flex items-center gap-2"
+            >
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              {error}
+            </motion.div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">이메일</label>
@@ -119,7 +144,12 @@ export default function Login({ onLogin }: LoginProps) {
 
           {/* Social Logins */}
           <div className="grid grid-cols-2 gap-4">
-            <button className="flex items-center justify-center gap-2 py-3 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors font-semibold text-gray-700">
+            <button 
+              type="button"
+              onClick={handleGithubLogin}
+              disabled={isLoading}
+              className="flex items-center justify-center gap-2 py-3 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors font-semibold text-gray-700"
+            >
               <Github size={20} /> GitHub
             </button>
             <button 

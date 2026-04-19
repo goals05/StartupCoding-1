@@ -29,42 +29,45 @@ export default function App() {
   // Firebase Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        // Fetch or Initialize User Profile in Firestore
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+      try {
+        if (user) {
+          // Fetch or Initialize User Profile in Firestore
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
 
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          setFavorites(data.favorites || []);
-          if (data.lastRegion) setActiveRegion(data.lastRegion);
-          if (data.lastProvince) setActiveProvince(data.lastProvince);
-        } else {
-          // New user profile
-          await setDoc(userDocRef, {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            favorites: [],
-            lastRegion: '서울 전체',
-            lastProvince: '전체',
-            updatedAt: serverTimestamp()
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setFavorites(data.favorites || []);
+            if (data.lastRegion) setActiveRegion(data.lastRegion);
+            if (data.lastProvince) setActiveProvince(data.lastProvince);
+          } else {
+            // New user profile
+            await setDoc(userDocRef, {
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName,
+              photoURL: user.photoURL,
+              favorites: [],
+              lastRegion: '서울 전체',
+              lastProvince: '전체',
+              updatedAt: serverTimestamp()
+            });
+          }
+
+          // Setup real-time listener for user data
+          onSnapshot(userDocRef, (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              setFavorites(data.favorites || []);
+            }
           });
         }
-
-        // Setup real-time listener for user data
-        const unsubDoc = onSnapshot(userDocRef, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setFavorites(data.favorites || []);
-          }
-        });
-        
-        return () => unsubDoc();
+        setCurrentUser(user);
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      } finally {
+        setIsInitializing(false);
       }
-      setIsInitializing(false);
     });
 
     return () => unsubscribe();
