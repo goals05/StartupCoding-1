@@ -27,23 +27,28 @@ export default function App() {
 
   // Supabase Auth Listener
   useEffect(() => {
-    // 1. Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      // 1. Get initial session
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setCurrentUser(session.user);
-        fetchUserData(session.user.id);
+        await fetchUserData(session.user.id);
       }
       setIsInitializing(false);
-    });
+    };
+
+    initializeAuth();
 
     // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         setCurrentUser(session.user);
-        fetchUserData(session.user.id);
+        await fetchUserData(session.user.id);
       } else {
         setCurrentUser(null);
         setFavorites([]);
+        setActiveRegion('서울 전체');
+        setActiveProvince('전체');
       }
       setIsInitializing(false);
     });
@@ -71,9 +76,11 @@ export default function App() {
           }]);
         if (insertError) console.error("Error creating profile", insertError);
       } else if (data) {
-        setFavorites(data.favorites || []);
+        // Essential: Set favorites first, then other preferences
+        if (data.favorites) setFavorites(data.favorites);
         if (data.last_region) setActiveRegion(data.last_region);
         if (data.last_province) setActiveProvince(data.last_province);
+        console.log("User data loaded successfully:", data.favorites?.length, "favorites");
       }
     } catch (err) {
       console.error("Error fetching user data", err);
