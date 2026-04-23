@@ -18,35 +18,25 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { MOCK_PLACES } from '../data/mockData';
-import { User as FirebaseUser } from 'firebase/auth';
-import { db } from '../lib/firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  addDoc, 
-  serverTimestamp, 
-  Timestamp 
-} from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface VisitRecord {
   id: string;
-  userId: string;
-  placeId: string;
-  placeName: string;
-  imageUrl: string;
-  visitedAt: string;
+  user_id: string;
+  place_id: string;
+  place_name: string;
+  image_url: string;
+  visited_at: string;
   content: string;
-  createdAt: Timestamp;
+  created_at: string;
 }
 
 interface MyPageProps {
   isOpen: boolean;
   onClose: () => void;
   onLogout: () => void;
-  user: FirebaseUser | null;
+  user: SupabaseUser | null;
 }
 
 const FAQS = [
@@ -56,7 +46,7 @@ const FAQS = [
   },
   {
     question: "골든타임 추천은 어떤 기준인가요?",
-    answer: "해당 장소의 과거 방문 이 패턴과 현재 실시간 유입 추세를 분석하여, 대기 시간이 최소화되는 가장 가까운 시간대를 AI가 계산하여 추천합니다."
+    answer: "해당 장소의 과거 방문 패턴과 현재 실시간 유입 추세를 분석하여, 대기 시간이 최소화되는 가장 가까운 시간대를 AI가 계산하여 추천합니다."
   },
   {
     question: "방문 기록은 어떻게 저장되나요?",
@@ -72,47 +62,49 @@ export default function MyPage({ isOpen, onClose, onLogout, user }: MyPageProps)
   const [writeContent, setWriteContent] = useState('');
   const [selectedPlaceForRecord, setSelectedPlaceForRecord] = useState(MOCK_PLACES[0]);
 
-  // Fetch from Firestore
+  // Fetch from Supabase
   useEffect(() => {
     if (user && isOpen) {
-      const q = query(
-        collection(db, 'travel_records'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const records = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as VisitRecord[];
-        setVisitedPlaces(records);
-      });
-
-      return () => unsubscribe();
+      fetchRecords();
     }
   }, [user, isOpen]);
+
+  const fetchRecords = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('travel_records')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    
+    if (data) setVisitedPlaces(data);
+    if (error) console.error('Error fetching records:', error);
+  };
 
   const handleAddRecord = async () => {
     if (!user) return;
     setIsSubmitting(true);
 
     try {
-      await addDoc(collection(db, 'travel_records'), {
-        userId: user.uid,
-        placeId: selectedPlaceForRecord.id,
-        placeName: selectedPlaceForRecord.name,
-        imageUrl: selectedPlaceForRecord.imageUrl,
-        content: writeContent,
-        visitedAt: new Date().toISOString(),
-        createdAt: serverTimestamp()
-      });
+      const { error } = await supabase
+        .from('travel_records')
+        .insert([{
+          user_id: user.id,
+          place_id: selectedPlaceForRecord.id,
+          place_name: selectedPlaceForRecord.name,
+          image_url: selectedPlaceForRecord.imageUrl,
+          content: writeContent,
+          visited_at: new Date().toISOString(),
+        }]);
+
+      if (error) throw error;
 
       setIsWriteModalOpen(false);
       setWriteContent('');
+      fetchRecords();
     } catch (error) {
-      console.error('Error saving record to Firebase:', error);
-      alert('기록 저장 중 오류가 발생했습니다.');
+      console.error('Error saving record to Supabase:', error);
+      alert('기록 저장 중 오류가 발생했습니다. 테이블이 생성되어 있는지 확인해 주세요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -124,6 +116,10 @@ export default function MyPage({ isOpen, onClose, onLogout, user }: MyPageProps)
       onLogout();
     }
   };
+
+  // Get user info from metadata if available
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '사용자';
+  const photoURL = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   return (
     <AnimatePresence>
@@ -147,14 +143,14 @@ export default function MyPage({ isOpen, onClose, onLogout, user }: MyPageProps)
             <div className="p-6 flex items-center justify-between border-b border-gray-100 bg-white">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 overflow-hidden">
-                  {user?.photoURL ? (
-                    <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                  {photoURL ? (
+                    <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                     <UserIcon size={24} />
                   )}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">{user?.displayName || user?.email?.split('@')[0] || '사용자'}</h2>
+                  <h2 className="text-xl font-bold text-gray-900">{displayName}</h2>
                   <p className="text-xs text-gray-500 font-medium">{user?.email}</p>
                 </div>
               </div>
@@ -181,7 +177,7 @@ export default function MyPage({ isOpen, onClose, onLogout, user }: MyPageProps)
                     <section className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                          <History size={16} /> 나의 여행 기록
+                          <History size={16} /> 나의 여행 기록 (Supabase)
                         </h3>
                         <button 
                           onClick={() => setIsWriteModalOpen(true)}
@@ -191,26 +187,26 @@ export default function MyPage({ isOpen, onClose, onLogout, user }: MyPageProps)
                         </button>
                       </div>
                       <div className="space-y-3">
-                        {visitedPlaces.length > 0 ? visitedPlaces.map((place, idx) => (
-                          <div key={`${place.id}-${idx}`} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-3">
+                        {visitedPlaces.length > 0 ? visitedPlaces.map((record, idx) => (
+                          <div key={`${record.id}-${idx}`} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-3">
                             <div className="flex items-center gap-4">
-                              <img src={place.imageUrl} alt={place.placeName} className="w-16 h-16 rounded-2xl object-cover" />
+                              <img src={record.image_url} alt={record.place_name} className="w-16 h-16 rounded-2xl object-cover" />
                               <div className="flex-1">
-                                <h4 className="font-bold text-gray-900">{place.placeName}</h4>
+                                <h4 className="font-bold text-gray-900">{record.place_name}</h4>
                                 <div className="flex items-center gap-3 mt-1">
                                   <span className="text-[10px] text-gray-400 flex items-center gap-1 font-medium">
-                                    <Calendar size={10} /> {place.visitedAt ? new Date(place.visitedAt).toLocaleDateString() : '날짜 정보 없음'}
+                                    <Calendar size={10} /> {record.visited_at ? new Date(record.visited_at).toLocaleDateString() : '날짜 정보 없음'}
                                   </span>
-                                  <span className="text-[10px] text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
-                                    Checked-in
+                                  <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full font-bold uppercase tracking-tight">
+                                    Supabase DB
                                   </span>
                                 </div>
                               </div>
                               <ChevronRight className="text-gray-300" size={18} />
                             </div>
-                            {place.content && (
+                            {record.content && (
                               <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-2xl leading-relaxed italic">
-                                "{place.content}"
+                                "{record.content}"
                               </p>
                             )}
                           </div>

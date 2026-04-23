@@ -8,14 +8,13 @@ import MyPage from './components/MyPage';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { MOCK_PLACES } from './data/mockData';
-import { auth, db } from './lib/firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { supabase } from './lib/supabase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 type Tab = 'predictor' | 'optimizer' | 'now';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('predictor');
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -26,52 +25,60 @@ export default function App() {
   const [activeRegion, setActiveRegion] = useState<string | null>('서울 전체');
   const [activeProvince, setActiveProvince] = useState('전체');
 
-  // Firebase Auth Listener
+  // Supabase Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        if (user) {
-          // Fetch or Initialize User Profile in Firestore
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            setFavorites(data.favorites || []);
-            if (data.lastRegion) setActiveRegion(data.lastRegion);
-            if (data.lastProvince) setActiveProvince(data.lastProvince);
-          } else {
-            // New user profile
-            await setDoc(userDocRef, {
-              uid: user.uid,
-              email: user.email,
-              displayName: user.displayName,
-              photoURL: user.photoURL,
-              favorites: [],
-              lastRegion: '서울 전체',
-              lastProvince: '전체',
-              updatedAt: serverTimestamp()
-            });
-          }
-
-          // Setup real-time listener for user data
-          onSnapshot(userDocRef, (doc) => {
-            if (doc.exists()) {
-              const data = doc.data();
-              setFavorites(data.favorites || []);
-            }
-          });
-        }
-        setCurrentUser(user);
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-      } finally {
-        setIsInitializing(false);
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setCurrentUser(session.user);
+        fetchUserData(session.user.id);
       }
+      setIsInitializing(false);
     });
 
-    return () => unsubscribe();
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setCurrentUser(session.user);
+        fetchUserData(session.user.id);
+      } else {
+        setCurrentUser(null);
+        setFavorites([]);
+      }
+      setIsInitializing(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserData = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        // No profile found, create one
+        const { error: insertError } = await supabase
+          .from('user_profiles')
+          .insert([{ 
+            id: userId, 
+            favorites: [], 
+            last_region: '서울 전체', 
+            last_province: '전체' 
+          }]);
+        if (insertError) console.error("Error creating profile", insertError);
+      } else if (data) {
+        setFavorites(data.favorites || []);
+        if (data.last_region) setActiveRegion(data.last_region);
+        if (data.last_province) setActiveProvince(data.last_province);
+      }
+    } catch (err) {
+      console.error("Error fetching user data", err);
+    }
+  };
 
   const toggleFavorite = async (id: string) => {
     if (!currentUser) return;
@@ -83,25 +90,29 @@ export default function App() {
     setFavorites(newFavorites);
     
     try {
-      await updateDoc(doc(db, 'users', currentUser.uid), {
-        favorites: newFavorites,
-        updatedAt: serverTimestamp()
-      });
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ favorites: newFavorites })
+        .eq('id', currentUser.id);
+      
+      if (error) throw error;
     } catch (error) {
       console.error("Error updating favorites", error);
     }
   };
 
-  // Sync Regional choice to Firestore for persistence
+  // Sync Regional choice to Supabase for persistence
   useEffect(() => {
     if (currentUser && !isInitializing) {
       const updateLocation = async () => {
         try {
-          await updateDoc(doc(db, 'users', currentUser.uid), {
-            lastRegion: activeRegion,
-            lastProvince: activeProvince,
-            updatedAt: serverTimestamp()
-          });
+          await supabase
+            .from('user_profiles')
+            .update({ 
+              last_region: activeRegion, 
+              last_province: activeProvince 
+            })
+            .eq('id', currentUser.id);
         } catch (error) {
           console.error("Error updating location session", error);
         }
@@ -116,7 +127,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      await supabase.auth.signOut();
       setActiveTab('predictor');
     } catch (error) {
       console.error("Logout failed", error);
@@ -128,7 +139,7 @@ export default function App() {
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-500 font-medium">로딩 중...</p>
+          <p className="text-gray-500 font-medium">로딩 중 (Supabase)...</p>
         </div>
       </div>
     );

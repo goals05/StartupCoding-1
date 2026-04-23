@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Zap, Mail, Lock, ArrowRight, Github, Chrome } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
-import { auth } from '../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, GithubAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
+import { supabase } from '../lib/supabase';
 
 interface LoginProps {
   onLogin: (email: string) => void;
@@ -15,29 +14,23 @@ export default function Login({ onLogin }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGoogleLogin = async () => {
+  const handleSocialLogin = async (provider: 'google' | 'github') => {
     setIsLoading(true);
     setError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const { error: loginError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          // AI Studio iframe environment might block popups. 
+          // Suggesting "Open in new tab" if it fails.
+          redirectTo: window.location.origin,
+        }
+      });
+      
+      if (loginError) throw loginError;
     } catch (err: any) {
       console.error(err);
-      setError('구글 로그인에 실패했습니다. 팝업이 차단되었는지 확인해주세요.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGithubLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const provider = new GithubAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      console.error(err);
-      setError('깃허브 로그인에 실패했습니다. Firebase 콘솔에서 깃허브 로그인이 활성화되어 있는지 확인해주세요.');
+      setError(`${provider === 'google' ? '구글' : '깃허브'} 로그인에 실패했습니다. 브라우저 팝업 설정을 확인하거나 상단의 "새 창에서 열기" 버튼을 사용해 주세요.`);
     } finally {
       setIsLoading(false);
     }
@@ -48,7 +41,11 @@ export default function Login({ onLogin }: LoginProps) {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (loginError) throw loginError;
     } catch (err: any) {
       console.error(err);
       setError('이메일 또는 비밀번호가 올바르지 않습니다.');
@@ -99,7 +96,7 @@ export default function Login({ onLogin }: LoginProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none text-gray-900"
                 />
               </div>
             </div>
@@ -114,7 +111,7 @@ export default function Login({ onLogin }: LoginProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none"
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none text-gray-900"
                 />
               </div>
             </div>
@@ -146,7 +143,7 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="grid grid-cols-2 gap-4">
             <button 
               type="button"
-              onClick={handleGithubLogin}
+              onClick={() => handleSocialLogin('github')}
               disabled={isLoading}
               className="flex items-center justify-center gap-2 py-3 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors font-semibold text-gray-700"
             >
@@ -154,7 +151,7 @@ export default function Login({ onLogin }: LoginProps) {
             </button>
             <button 
               type="button"
-              onClick={handleGoogleLogin}
+              onClick={() => handleSocialLogin('google')}
               disabled={isLoading}
               className="flex items-center justify-center gap-2 py-3 border border-gray-100 rounded-2xl hover:bg-gray-50 transition-colors font-semibold text-gray-700"
             >
@@ -165,7 +162,7 @@ export default function Login({ onLogin }: LoginProps) {
 
         {/* Footer Link */}
         <p className="text-center text-sm text-gray-500">
-          계정이 없으신가요? <button className="text-blue-600 font-bold hover:underline">회원가입</button>
+          계정정보: goals0509@gmail.com
         </p>
       </motion.div>
     </div>
