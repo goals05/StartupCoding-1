@@ -28,28 +28,38 @@ export default function App() {
   // Supabase Auth Listener
   useEffect(() => {
     const initializeAuth = async () => {
-      // 1. Get initial session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setCurrentUser(session.user);
-        await fetchUserData(session.user.id);
+      try {
+        // 1. Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        if (session) {
+          setCurrentUser(session.user);
+          await fetchUserData(session.user.id);
+        }
+      } catch (err) {
+        console.error("Auth session initialization failed:", err);
+      } finally {
+        setIsInitializing(false);
       }
-      setIsInitializing(false);
     };
 
     initializeAuth();
 
     // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth event:", event);
       if (session) {
         setCurrentUser(session.user);
-        await fetchUserData(session.user.id);
+        // Load data in background if it's not the initial load to prevent blocking
+        fetchUserData(session.user.id);
       } else {
         setCurrentUser(null);
         setFavorites([]);
         setActiveRegion('서울 전체');
         setActiveProvince('전체');
       }
+      // Guarantee loading state is cleared
       setIsInitializing(false);
     });
 
